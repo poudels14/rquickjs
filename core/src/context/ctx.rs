@@ -488,6 +488,31 @@ impl<'js> Ctx<'js> {
     pub fn as_raw(&self) -> NonNull<qjs::JSContext> {
         self.ctx
     }
+
+    /// Set the execution context
+    /// The caller should hold a reference to the value, otherwise it will be freed.
+    pub fn set_execution_context(&self, value: Value<'_>) -> Result<Value<'js>> {
+        unsafe {
+            let res = qjs::JS_SetExecutionContext(self.as_ptr(), value.as_js_value());
+            self.handle_exception(res)?;
+            let res = Value::from_js_value(self.clone(), res);
+            if !value.is_undefined() && res.is_undefined() {
+                return Err(crate::Exception::throw_message(
+                    &self,
+                    "Failed to set execution context",
+                ));
+            }
+            Ok(res)
+        }
+    }
+
+    /// Get the current execution context.
+    pub fn get_execution_context(&self) -> Value<'js> {
+        unsafe {
+            let res = qjs::JS_GetExecutionContext(self.as_ptr());
+            Value::from_js_value(self.clone(), res)
+        }
+    }
 }
 
 #[cfg(test)]

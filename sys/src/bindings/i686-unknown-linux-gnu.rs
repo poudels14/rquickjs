@@ -230,6 +230,12 @@ unsafe extern "C" {
     pub fn JS_UpdateStackTop(rt: *mut JSRuntime);
 }
 unsafe extern "C" {
+    pub fn JS_SetExecutionContext(ctx: *mut JSContext, argv: JSValue) -> JSValue;
+}
+unsafe extern "C" {
+    pub fn JS_GetExecutionContext(ctx: *mut JSContext) -> JSValue;
+}
+unsafe extern "C" {
     pub fn JS_NewRuntime2(
         mf: *const JSMallocFunctions,
         opaque: *mut ::core::ffi::c_void,
