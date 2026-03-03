@@ -694,7 +694,7 @@ impl<'js> Ctx<'js> {
     ///
     /// # Safety
     /// Assumes to have ownership of the [`JSValue`]
-    pub(crate) unsafe fn handle_exception(&self, js_val: qjs::JSValue) -> Result<qjs::JSValue> {
+    pub unsafe fn handle_exception(&self, js_val: qjs::JSValue) -> Result<qjs::JSValue> {
         if qjs::JS_VALUE_GET_NORM_TAG(js_val) != qjs::JS_TAG_EXCEPTION {
             Ok(js_val)
         } else {
