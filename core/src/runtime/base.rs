@@ -2,6 +2,7 @@
 
 use super::{
     opaque::Opaque, raw::RawRuntime, InterruptHandler, MemoryUsage, PromiseHook, RejectionTracker,
+    UnhandledRejectionTracker,
 };
 use crate::allocator::Allocator;
 #[cfg(feature = "loader")]
@@ -79,6 +80,14 @@ impl Runtime {
             self.inner
                 .lock()
                 .set_host_promise_rejection_tracker(tracker);
+        }
+    }
+
+    /// Set a closure which is called only for rejections that remain unhandled.
+    #[inline]
+    pub fn set_unhandled_rejection_tracker(&self, tracker: Option<UnhandledRejectionTracker>) {
+        unsafe {
+            self.inner.lock().set_unhandled_rejection_tracker(tracker);
         }
     }
 

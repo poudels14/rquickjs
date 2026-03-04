@@ -14,7 +14,7 @@ use async_lock::Mutex;
 
 use super::{
     opaque::Opaque, raw::RawRuntime, schedular::SchedularPoll, spawner::DriveFuture,
-    InterruptHandler, MemoryUsage, PromiseHook, RejectionTracker,
+    InterruptHandler, MemoryUsage, PromiseHook, RejectionTracker, UnhandledRejectionTracker,
 };
 use crate::allocator::Allocator;
 #[cfg(feature = "loader")]
@@ -170,6 +170,21 @@ impl AsyncRuntime {
                 .await
                 .runtime
                 .set_host_promise_rejection_tracker(tracker);
+        }
+    }
+
+    /// Set a closure which is called only for rejections that remain unhandled.
+    #[inline]
+    pub async fn set_unhandled_rejection_tracker(
+        &self,
+        tracker: Option<UnhandledRejectionTracker>,
+    ) {
+        unsafe {
+            self.inner
+                .lock()
+                .await
+                .runtime
+                .set_unhandled_rejection_tracker(tracker);
         }
     }
 

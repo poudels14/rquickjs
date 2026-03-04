@@ -43,6 +43,14 @@ pub type RejectionTracker = Box<dyn for<'a> Fn(Ctx<'a>, Value<'a>, Value<'a>, bo
 pub type RejectionTracker =
     Box<dyn for<'a> Fn(Ctx<'a>, Value<'a>, Value<'a>, bool) + Send + 'static>;
 
+/// The type of the unhandled promise rejection tracker.
+#[cfg(not(feature = "parallel"))]
+pub type UnhandledRejectionTracker = Box<dyn for<'a> Fn(Ctx<'a>, Value<'a>, Value<'a>) + 'static>;
+/// The type of the unhandled promise rejection tracker.
+#[cfg(feature = "parallel")]
+pub type UnhandledRejectionTracker =
+    Box<dyn for<'a> Fn(Ctx<'a>, Value<'a>, Value<'a>) + Send + 'static>;
+
 /// The type of the interrupt handler.
 #[cfg(not(feature = "parallel"))]
 pub type InterruptHandler = Box<dyn FnMut() -> bool + 'static>;

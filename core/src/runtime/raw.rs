@@ -12,7 +12,10 @@ use crate::{
     Ctx, Error, Result, Value,
 };
 
-use super::{opaque::Opaque, InterruptHandler, PromiseHook, PromiseHookType, RejectionTracker};
+use super::{
+    opaque::Opaque, InterruptHandler, PromiseHook, PromiseHookType, RejectionTracker,
+    UnhandledRejectionTracker,
+};
 
 const DUMP_BYTECODE_FINAL: u64 = 0x01;
 const DUMP_BYTECODE_PASS2: u64 = 0x02;
@@ -377,6 +380,45 @@ impl RawRuntime {
         self.get_opaque().set_rejection_tracker(tracker);
     }
 
+    pub unsafe fn set_unhandled_rejection_tracker(
+        &mut self,
+        tracker: Option<UnhandledRejectionTracker>,
+    ) {
+        unsafe extern "C" fn unhandled_rejection_tracker_wrapper(
+            ctx: *mut rquickjs_sys::JSContext,
+            promise: rquickjs_sys::JSValue,
+            reason: rquickjs_sys::JSValue,
+            opaque: *mut ::core::ffi::c_void,
+        ) {
+            let opaque = NonNull::new_unchecked(opaque).cast::<Opaque>();
+
+            let catch_unwind = crate::util::catch_unwind(AssertUnwindSafe(move || {
+                let ctx = Ctx::from_ptr(ctx);
+
+                opaque.as_ref().run_unhandled_rejection_tracker(
+                    ctx.clone(),
+                    Value::from_js_value_const(ctx.clone(), promise),
+                    Value::from_js_value_const(ctx, reason),
+                );
+            }));
+            match catch_unwind {
+                Ok(_) => {}
+                Err(panic) => {
+                    opaque.as_ref().set_panic(panic);
+                }
+            }
+        }
+
+        qjs::JS_SetUnhandledPromiseRejectionTracker(
+            self.rt.as_ptr(),
+            tracker
+                .as_ref()
+                .map(|_| unhandled_rejection_tracker_wrapper as _),
+            qjs::JS_GetRuntimeOpaque(self.rt.as_ptr()),
+        );
+        self.get_opaque().set_unhandled_rejection_tracker(tracker);
+    }
+
     /// Set a closure which is regularly called by the engine when it is executing code.
     /// If the provided closure returns `true` the interpreter will raise and uncatchable
     /// exception and return control flow to the caller.
@@ -426,7 +468,64 @@ impl RawRuntime {
 mod test {
     use std::sync::{Arc, Mutex};
 
-    use crate::{Context, Runtime};
+    #[cfg(feature = "loader")]
+    use crate::{
+        loader::{Loader, Resolver},
+        Error, Module,
+    };
+    use crate::{Context, Ctx, Exception, Function, Runtime};
+
+    fn drain_jobs_with_limit(rt: &Runtime, max_jobs: usize) {
+        for _ in 0..max_jobs {
+            match rt.execute_pending_job() {
+                Ok(true) => continue,
+                Ok(false) => return,
+                Err(_) => panic!("pending job threw unexpectedly"),
+            }
+        }
+        panic!("job queue did not drain within {max_jobs} jobs");
+    }
+
+    #[cfg(feature = "loader")]
+    struct IdentityResolver;
+
+    #[cfg(feature = "loader")]
+    impl Resolver for IdentityResolver {
+        fn resolve<'js>(
+            &mut self,
+            _ctx: &Ctx<'js>,
+            _base: &str,
+            name: &str,
+        ) -> crate::Result<String> {
+            Ok(name.into())
+        }
+    }
+
+    #[cfg(feature = "loader")]
+    struct FaultyLoader {
+        source: &'static str,
+    }
+
+    #[cfg(feature = "loader")]
+    impl Loader for FaultyLoader {
+        fn load<'js>(
+            &mut self,
+            ctx: &Ctx<'js>,
+            name: &str,
+            _attributes: Option<crate::loader::ImportAttributes<'js>>,
+        ) -> crate::Result<Module<'js>> {
+            if name == "faulty-module" {
+                Module::declare(ctx.clone(), name, self.source)
+            } else {
+                Err(Error::new_loading_message(name, "module not found"))
+            }
+        }
+    }
+
+    #[cfg(feature = "loader")]
+    fn set_faulty_loader(rt: &Runtime, source: &'static str) {
+        rt.set_loader(IdentityResolver, FaultyLoader { source });
+    }
 
     #[test]
     fn promise_rejection_handler() {
@@ -454,5 +553,113 @@ mod test {
             );
         });
         assert_eq!(*counter.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn unhandled_rejection_tracker() {
+        let rt = Runtime::new().unwrap();
+        let counter = Arc::new(Mutex::new(0usize));
+        {
+            let tracker_counter = counter.clone();
+            rt.set_unhandled_rejection_tracker(Some(Box::new(move |_, _, _| {
+                let mut c = tracker_counter.lock().unwrap();
+                *c += 1;
+            })));
+        }
+        let context = Context::full(&rt).unwrap();
+        context.with(|ctx| {
+            let _: Result<(), _> = ctx.eval(
+                r#"
+                Promise.reject(new Error("Caught 1")).catch(() => {});
+                (async () => {
+                    try {
+                        await Promise.reject(new Error("Caught 2"));
+                    } catch (_e) {}
+                })();
+                Promise.reject(new Error("Uncaught"));
+            "#,
+            );
+        });
+        drain_jobs_with_limit(&rt, 64);
+        assert_eq!(*counter.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn unhandled_rejection_tracker_sync_throw_does_not_hang() {
+        let rt = Runtime::new().unwrap();
+        let counter = Arc::new(Mutex::new(0usize));
+        {
+            let tracker_counter = counter.clone();
+            rt.set_unhandled_rejection_tracker(Some(Box::new(move |_, _, _| {
+                let mut c = tracker_counter.lock().unwrap();
+                *c += 1;
+            })));
+        }
+        let context = Context::full(&rt).unwrap();
+        context.with(|ctx| {
+            let res: Result<(), _> = ctx.eval(r#"throw new Error("sync handled");"#);
+            assert!(res.is_err());
+        });
+        drain_jobs_with_limit(&rt, 8);
+        assert_eq!(*counter.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn unhandled_rejection_tracker_multiple_unhandled_do_not_hang() {
+        let rt = Runtime::new().unwrap();
+        let counter = Arc::new(Mutex::new(0usize));
+        {
+            let tracker_counter = counter.clone();
+            rt.set_unhandled_rejection_tracker(Some(Box::new(move |_, _, _| {
+                let mut c = tracker_counter.lock().unwrap();
+                *c += 1;
+            })));
+        }
+        let context = Context::full(&rt).unwrap();
+        context.with(|ctx| {
+            let res: Result<(), _> = ctx.eval(
+                r#"
+                Promise.reject(new Error("Uncaught 1"));
+                Promise.reject(new Error("Uncaught 2"));
+                throw new Error("sync handled");
+            "#,
+            );
+            assert!(res.is_err());
+        });
+        drain_jobs_with_limit(&rt, 64);
+        assert_eq!(*counter.lock().unwrap(), 2);
+    }
+
+    #[cfg(feature = "loader")]
+    #[test]
+    fn unhandled_rejection_tracker_dynamic_import_runtime_error_caught() {
+        let rt = Runtime::new().unwrap();
+        let counter = Arc::new(Mutex::new(0usize));
+        {
+            let tracker_counter = counter.clone();
+            rt.set_unhandled_rejection_tracker(Some(Box::new(move |_, _, _| {
+                let mut c = tracker_counter.lock().unwrap();
+                *c += 1;
+            })));
+        }
+        set_faulty_loader(&rt, "export const broken = test();");
+
+        let context = Context::full(&rt).unwrap();
+        context.with(|ctx| {
+            let res: Result<(), _> = ctx.eval(
+                r#"
+                (async () => {
+                    try {
+                        await import("faulty-module");
+                    } catch (_error) {
+                    }
+                })();
+            "#,
+            );
+            assert!(res.is_ok());
+        });
+
+        drain_jobs_with_limit(&rt, 64);
+        assert_eq!(*counter.lock().unwrap(), 0);
     }
 }

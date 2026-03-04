@@ -5,7 +5,8 @@ use crate::{
 
 use super::{
     userdata::{UserDataGuard, UserDataMap},
-    InterruptHandler, PromiseHook, PromiseHookType, RejectionTracker, UserDataError,
+    InterruptHandler, PromiseHook, PromiseHookType, RejectionTracker, UnhandledRejectionTracker,
+    UserDataError,
 };
 use alloc::boxed::Box;
 use core::{
@@ -40,6 +41,8 @@ pub(crate) struct Opaque<'js> {
 
     /// The user provided rejection tracker, if any.
     rejection_tracker: UnsafeCell<Option<RejectionTracker>>,
+    /// The user provided unhandled rejection tracker, if any.
+    unhandled_rejection_tracker: UnsafeCell<Option<UnhandledRejectionTracker>>,
 
     /// The user provided interrupt handler, if any.
     interrupt_handler: UnsafeCell<Option<InterruptHandler>>,
@@ -67,6 +70,7 @@ impl<'js> Opaque<'js> {
             promise_hook: UnsafeCell::new(None),
 
             rejection_tracker: UnsafeCell::new(None),
+            unhandled_rejection_tracker: UnsafeCell::new(None),
 
             interrupt_handler: UnsafeCell::new(None),
 
@@ -210,6 +214,19 @@ impl<'js> Opaque<'js> {
         }
     }
 
+    pub fn set_unhandled_rejection_tracker(&self, tracker: Option<UnhandledRejectionTracker>) {
+        unsafe { (*self.unhandled_rejection_tracker.get()) = tracker }
+    }
+
+    pub fn run_unhandled_rejection_tracker<'a>(
+        &self,
+        ctx: Ctx<'a>,
+        promise: Value<'a>,
+        reason: Value<'a>,
+    ) {
+        unsafe { (*self.unhandled_rejection_tracker.get()).as_mut().unwrap()(ctx, promise, reason) }
+    }
+
     pub fn set_interrupt_handler(&self, interupt: Option<InterruptHandler>) {
         unsafe { (*self.interrupt_handler.get()) = interupt }
     }
@@ -258,6 +275,7 @@ impl<'js> Opaque<'js> {
     /// runtime.
     pub fn clear(&mut self) {
         self.rejection_tracker.get_mut().take();
+        self.unhandled_rejection_tracker.get_mut().take();
         self.interrupt_handler.get_mut().take();
         self.panic.take();
         self.prototypes.get_mut().clear();

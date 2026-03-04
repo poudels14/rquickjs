@@ -1493,6 +1493,22 @@ unsafe extern "C" {
         opaque: *mut ::core::ffi::c_void,
     );
 }
+pub type JSUnhandledPromiseRejectionTracker = ::core::option::Option<
+    unsafe extern "C" fn(
+        ctx: *mut JSContext,
+        promise: JSValue,
+        reason: JSValue,
+        opaque: *mut ::core::ffi::c_void,
+    ),
+>;
+unsafe extern "C" {
+    pub fn JS_SetUnhandledPromiseRejectionTracker(
+        rt: *mut JSRuntime,
+        cb: JSUnhandledPromiseRejectionTracker,
+        opaque: *mut ::core::ffi::c_void,
+    );
+}
+
 pub type JSInterruptHandler = ::core::option::Option<
     unsafe extern "C" fn(
         rt: *mut JSRuntime,
