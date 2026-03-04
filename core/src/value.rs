@@ -535,7 +535,7 @@ type_impls! {
     Bool: bool => JS_TAG_BOOL,
     Int: int => JS_TAG_INT,
     Float: float => JS_TAG_FLOAT64,
-    String: string => JS_TAG_STRING,
+    String: string => JS_TAG_STRING | JS_TAG_STRING_ROPE,
     Symbol: symbol => JS_TAG_SYMBOL,
     Array: array => JS_TAG_OBJECT,
     Constructor: constructor => JS_TAG_OBJECT,
