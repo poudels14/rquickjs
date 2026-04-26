@@ -97,6 +97,9 @@ rust-alloc = ["rquickjs-core/rust-alloc"]
 # Enable helper macros
 macro = ["rquickjs-macro"]
 
+# Strip original source text from modules compiled by the embed! macro.
+strip-source = ["rquickjs-macro?/strip-source"]
+
 # Allows transferring objects between different contexts of the same runtime.
 # Disabled for now as it can be used to create unsound code.
 # multi-ctx = ["rquickjs-core/multi-ctx"]

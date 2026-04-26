@@ -34,3 +34,4 @@ difference = "2"
 [features]
 phf = ["phf_shared", "phf_generator"]
 bindgen = ["rquickjs-core/bindgen"]
+strip-source = []

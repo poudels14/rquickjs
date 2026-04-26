@@ -99,8 +99,11 @@ pub fn embed(modules: EmbedModules) -> Result<TokenStream> {
 
         ctx.with(|ctx| -> JsResult<()> {
             for f in files.into_iter() {
-                let bc = Module::declare(ctx.clone(), f.0.clone(), f.1)?
-                    .write(WriteOptions::default())?;
+                let options = WriteOptions {
+                    strip_source: cfg!(feature = "strip-source"),
+                    ..Default::default()
+                };
+                let bc = Module::declare(ctx.clone(), f.0.clone(), f.1)?.write(options)?;
                 modules.push((f.0, bc));
             }
             Ok(())
