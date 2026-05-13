@@ -457,6 +457,12 @@ impl RawRuntime {
         self.get_opaque().set_interrupt_handler(handler);
     }
 
+    /// Enable or disable capture of arguments + local variables for every
+    /// Error created by the engine. See [`crate::Exception::frames`].
+    pub unsafe fn set_capture_error_locals(&mut self, enable: bool) {
+        qjs::JS_SetCaptureErrorLocals(self.rt.as_ptr(), enable);
+    }
+
     fn add_dump_flags(rt: *mut rquickjs_sys::JSRuntime) {
         unsafe {
             qjs::JS_SetDumpFlags(rt, build_dump_flags());

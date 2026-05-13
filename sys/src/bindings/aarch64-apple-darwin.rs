@@ -826,6 +826,16 @@ unsafe extern "C" {
     pub fn JS_NewError(ctx: *mut JSContext) -> JSValue;
 }
 unsafe extern "C" {
+    pub fn JS_SetCaptureErrorLocals(rt: *mut JSRuntime, enable: bool);
+}
+unsafe extern "C" {
+    pub fn JS_GetErrorFrames(
+        ctx: *mut JSContext,
+        error: JSValue,
+        max_frames: ::core::ffi::c_int,
+    ) -> JSValue;
+}
+unsafe extern "C" {
     pub fn JS_NewInternalError(
         ctx: *mut JSContext,
         fmt: *const ::core::ffi::c_char,

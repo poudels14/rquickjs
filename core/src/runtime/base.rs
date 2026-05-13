@@ -101,6 +101,22 @@ impl Runtime {
         }
     }
 
+    /// When enabled, every `Error` created by the engine will carry a snapshot of
+    /// the arguments and local variables of each captured stack frame. The
+    /// snapshot can be read back via [`crate::Exception::locals`] and
+    /// [`crate::Exception::frames`].
+    ///
+    /// The cost at throw time is small (roughly one refcount bump per local),
+    /// but the captured values act as GC roots for the lifetime of the error
+    /// object — long-lived errors holding references to large locals will keep
+    /// significant memory live. Disabled by default.
+    #[inline]
+    pub fn set_capture_error_locals(&self, enable: bool) {
+        unsafe {
+            self.inner.lock().set_capture_error_locals(enable);
+        }
+    }
+
     /// Set the module loader
     #[cfg(feature = "loader")]
     #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "loader")))]

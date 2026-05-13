@@ -188,6 +188,18 @@ impl AsyncRuntime {
         }
     }
 
+    /// See [`crate::Runtime::set_capture_error_locals`].
+    #[inline]
+    pub async fn set_capture_error_locals(&self, enable: bool) {
+        unsafe {
+            self.inner
+                .lock()
+                .await
+                .runtime
+                .set_capture_error_locals(enable);
+        }
+    }
+
     /// Set a closure which is called when a promise is created, resolved, or chained.
     #[inline]
     pub async fn set_promise_hook(&self, tracker: Option<PromiseHook>) {
