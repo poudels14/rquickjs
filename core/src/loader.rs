@@ -288,7 +288,7 @@ mod test {
 
     use crate::{CatchResultExt, Context, Ctx, Error, Module, Result, Runtime};
 
-    use super::{Loader, Resolver};
+    use super::{BuiltinLoader, BuiltinResolver, Loader, Resolver};
 
     struct TestResolver;
 
@@ -614,5 +614,53 @@ mod test {
         assert_eq!(keys.len(), 2);
         assert!(keys.contains(&"type".to_string()));
         assert!(keys.contains(&"encoding".to_string()));
+    }
+
+    #[test]
+    fn reexported_import_in_cycle() {
+        let resolver = BuiltinResolver::default()
+            .with_module("stop")
+            .with_module("catalog")
+            .with_module("catalogue");
+        let loader = BuiltinLoader::default()
+            .with_module("stop", "export class Stop extends Error {}")
+            .with_module(
+                "catalog",
+                r#"
+                    import { useStop } from "catalogue";
+                    import { Stop } from "stop";
+                    export { Stop };
+                    export const run = () => useStop();
+                "#,
+            )
+            .with_module(
+                "catalogue",
+                r#"
+                    import { Stop } from "catalog";
+                    export const useStop = () => new Stop();
+                "#,
+            );
+
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        rt.set_loader(resolver, loader);
+
+        ctx.with(|ctx| {
+            Module::evaluate(
+                ctx.clone(),
+                "test",
+                r#"
+                    import { Stop, run } from "catalog";
+                    if (!(run() instanceof Stop)) {
+                        throw new Error("Expected run() to return a Stop");
+                    }
+                "#,
+            )
+            .catch(&ctx)
+            .unwrap()
+            .finish::<()>()
+            .catch(&ctx)
+            .unwrap();
+        });
     }
 }
